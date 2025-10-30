@@ -311,7 +311,11 @@
             if (isCommentsUnlocked) {
                 adminViewContainer.innerHTML = `
                     <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg">
-                        <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">All Submitted Ideas</h2>
+                        <!-- Updated H2 to include submission count span -->
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2 flex items-center justify-between">
+                            All Submitted Ideas
+                            <span id="submission-count" class="text-base text-gray-500 font-normal"></span>
+                        </h2>
                         <div class="flex items-center justify-between mb-4">
                             <p class="text-gray-600">Real-time feed of all anonymous submissions, grouped by date.</p>
                             <button id="toggle-ids-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-full hover:bg-gray-300 transition">
@@ -354,17 +358,18 @@
 
         function displayAdminSubmissions(allSubmissions) {
             const submissionsList = document.getElementById('submissions-list');
+            const submissionCountElement = document.getElementById('submission-count');
             if (!submissionsList) return; 
 
             if (allSubmissions.length === 0) {
                 submissionsList.innerHTML = `<p class="text-center text-gray-500 italic p-4">No submissions received yet.</p>`;
+                if (submissionCountElement) submissionCountElement.textContent = `(0 Total)`;
                 return;
             }
 
             const groupedSubmissions = groupSubmissionsByDate(allSubmissions);
             let htmlContent = '';
-            let totalRendered = 0;
-
+            // No need for totalRendered since we use allSubmissions.length
             const groupOrder = ['Today', 'Yesterday', 'Last 7 Days', 'Older'];
 
             groupOrder.forEach(groupName => {
@@ -374,6 +379,7 @@
                         <h3 class="text-lg font-bold text-gray-700 mt-6 mb-2 pt-2 border-t border-gray-300 first:mt-0 first:pt-0 first:border-t-0">${groupName} (${submissions.length})</h3>
                     `;
                     htmlContent += submissions.map(sub => {
+                        // Ensure timestamp exists and can be converted to locale string
                         const date = sub.timestamp ? new Date(sub.timestamp.toMillis()).toLocaleString() : 'N/A';
                         return `
                             <div id="submission-${sub.id}" class="p-4 bg-gray-50 rounded-lg border border-gray-200 transition-shadow hover:shadow-md">
@@ -387,15 +393,14 @@
                             </div>
                         `;
                     }).join('');
-                    totalRendered += submissions.length;
                 }
             });
-
-            if (totalRendered === 0) {
-                 submissionsList.innerHTML = `<p class="text-center text-gray-500 italic p-4">No submissions received yet.</p>`;
-            } else {
-                submissionsList.innerHTML = htmlContent;
-            }
+            
+            // Update the submissions list with the new content
+            submissionsList.innerHTML = htmlContent;
+            
+            // Update the total count element
+            if (submissionCountElement) submissionCountElement.textContent = `(${allSubmissions.length} Total)`;
         }
 
         function toggleSubmitterIds() {
