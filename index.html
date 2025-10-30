@@ -7,7 +7,7 @@
     <!-- Load Tailwind CSS (Maintains 1-file constraint) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght=400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
@@ -18,24 +18,37 @@
         <!-- Header -->
         <header class="text-center py-6 mb-8 bg-white shadow-lg rounded-xl">
             <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-800">KUE idea box</h1>
-            <p id="role-display" class="text-sm mt-1 text-gray-600">Loading user role...</p>
+            <p id="role-display" class="text-sm mt-1 text-gray-600">Establishing secure connection...</p>
             
             <!-- Role Switcher for Demo Purposes -->
             <div class="mt-4">
-                <button id="role-switch-btn" class="px-4 py-2 text-sm font-semibold rounded-full shadow-md transition-colors duration-200"></button>
+                <button id="role-switch-btn" class="px-4 py-2 text-sm font-semibold rounded-full shadow-md transition-colors duration-200 hidden"></button>
             </div>
         </header>
 
-        <!-- Main Content Area: Content will be injected here immediately by JS -->
+        <!-- Main Content Area: RENDER STUDENT FORM IMMEDIATELY FOR FAST PERCEIVED LOAD TIME -->
         <div id="content-area">
-            <!-- Initial content before auth is ready -->
-            <div class="text-center py-10 text-gray-500">
-                <svg class="animate-spin h-6 w-6 mx-auto mb-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Establishing secure connection...
+            <div id="student-form-container" class="bg-white p-6 sm:p-8 rounded-xl shadow-lg transition-all duration-300">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit Your Anonymous Idea or Comment</h2>
+                <p class="text-gray-600 mb-6">Your identity is kept completely private. This is a secure channel for feedback.</p>
+                
+                <form id="submission-form">
+                    <textarea id="suggestion-input" rows="6" 
+                              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                              placeholder="Type your suggestion, idea, or comment here..."></textarea>
+                    
+                    <div id="message-box" class="mt-4 p-3 rounded-lg hidden"></div>
+                    
+                    <div class="flex mt-6">
+                        <button type="submit" 
+                                class="w-full px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-md">
+                            Submit Anonymously
+                        </button>
+                    </div>
+                </form>
             </div>
+            <!-- Admin View will replace student-form-container if role is admin -->
+            <div id="admin-view-container"></div>
         </div>
     </div>
 
@@ -62,30 +75,26 @@
         // Set logging for debugging
         setLogLevel('debug');
 
-        // --- ADMIN PASSWORD SETUP ---
+        // --- GLOBAL STATE ---
         const ADMIN_PASSWORD = "kue@2018#";
+        const DEMO_MODE_KEY = 'feedbackAppDemoMode';
         
         let currentUserId = null;
         let isAdmin = false;
         let isAuthReady = false;
         let isCommentsUnlocked = false; 
-        
-        // LocalStorage key for forcing student view in demo
-        const DEMO_MODE_KEY = 'feedbackAppDemoMode';
+        let unsubscribeSubmissions = null; // Listener cleanup variable
 
-        // Variable to hold the Firestore unsubscribe function for cleanup
-        let unsubscribeSubmissions = null; 
-
+        // --- DOM REFERENCES ---
         const roleDisplay = document.getElementById('role-display');
         const contentArea = document.getElementById('content-area');
         const roleSwitchBtn = document.getElementById('role-switch-btn');
-        
-        // --- CORE APPLICATION LOGIC ---
+        const studentFormContainer = document.getElementById('student-form-container');
+        const adminViewContainer = document.getElementById('admin-view-container');
 
-        /**
-         * Determines if the user is an Admin (signed in via custom token)
-         * or a Student (signed in anonymously).
-         */
+        
+        // --- AUTHENTICATION & ROLE MANAGEMENT ---
+
         async function handleAuth() {
             try {
                 if (initialAuthToken) {
@@ -103,6 +112,8 @@
             roleDisplay.innerHTML = roleIsAdmin
                 ? `<span class="font-bold text-red-600">Admin Mode</span> (User ID: ${userId})`
                 : `<span class="font-bold text-green-600">Student Mode</span> (Anonymous ID: ${userId})`;
+            
+            roleSwitchBtn.classList.remove('hidden');
 
             if (roleIsAdmin) {
                 roleSwitchBtn.textContent = 'Switch to Student View';
@@ -115,17 +126,12 @@
             }
         }
 
-        /**
-         * Sets the demo mode (student or admin) and refreshes the view.
-         * The 'admin' mode is achieved by removing the DEMO_MODE_KEY from localStorage.
-         */
         function setDemoMode(mode) {
             if (mode === 'student') {
                 localStorage.setItem(DEMO_MODE_KEY, 'student');
             } else {
-                // Clearing the key means the app will use the Firebase token status
                 localStorage.removeItem(DEMO_MODE_KEY);
-                isCommentsUnlocked = false; 
+                isCommentsUnlocked = false; // Admin view requires password re-entry
             }
             
             const user = auth.currentUser;
@@ -133,7 +139,6 @@
                 let baseIsAdmin = !user.isAnonymous;
                 const demoMode = localStorage.getItem(DEMO_MODE_KEY);
                 
-                // isAdmin is true only if the token is admin AND the user hasn't explicitly chosen 'student' view
                 isAdmin = (demoMode !== 'student' && baseIsAdmin);
                 
                 updateRoleDisplay(user.uid, isAdmin);
@@ -142,33 +147,29 @@
             initializeAppFeatures();
         }
 
-        /**
-         * Renders the application features based on role and auth status.
-         * Crucially, this function now cleans up old listeners.
-         */
+        // --- MAIN INITIALIZATION & RENDERING ---
+
         function initializeAppFeatures() {
-            // Check if we are ready before doing anything that requires the user state
-            if (!isAuthReady) {
-                console.log("initializeAppFeatures called before AuthReady. Skipping rendering.");
-                return;
-            }
+            if (!isAuthReady) return;
             
-            contentArea.innerHTML = ''; // Clear existing content
-            
-            // 1. Cleanup existing listener before rendering the new view
+            // 1. Cleanup existing listener
             if (unsubscribeSubmissions) {
                 unsubscribeSubmissions();
-                unsubscribeSubmissions = null; // Reset it
+                unsubscribeSubmissions = null;
                 console.log("Firestore listener unsubscribed.");
             }
 
+            // 2. Render view based on role
             if (isAdmin) {
+                studentFormContainer.classList.add('hidden');
+                adminViewContainer.innerHTML = '';
                 renderAdminView();
             } else {
-                renderStudentForm();
+                adminViewContainer.innerHTML = '';
+                studentFormContainer.classList.remove('hidden');
             }
 
-            // Only start data listeners if we are fully authenticated, authorized, AND unlocked (admin view)
+            // 3. Start listener if needed (Admin and Unlocked)
             if (isAdmin && isCommentsUnlocked) {
                  setupRealtimeListener();
             }
@@ -193,6 +194,8 @@
             }
         }
 
+        // --- FIREBASE DATA OPERATIONS ---
+
         // Firestore path for public suggestions
         const getCollectionRef = () => collection(db, `/artifacts/${appId}/public/data/suggestions`);
 
@@ -205,13 +208,14 @@
             
             const suggestionsQuery = query(getCollectionRef());
             
-            // 2. Attach new listener and store the unsubscriber function
+            // Attach new listener and store the unsubscriber function
             unsubscribeSubmissions = onSnapshot(suggestionsQuery, (snapshot) => {
                 const submissions = [];
                 snapshot.forEach(doc => {
                     submissions.push({ id: doc.id, ...doc.data() });
                 });
                 
+                // Sort by timestamp descending
                 submissions.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
 
                 displayAdminSubmissions(submissions);
@@ -253,7 +257,7 @@
             }
         }
         
-        // --- DATE GROUPING LOGIC ---
+        // --- DATE GROUPING LOGIC (for Admin View) ---
 
         function isToday(someDate) {
             const today = new Date();
@@ -300,43 +304,12 @@
             return groups;
         }
 
-        // --- UI RENDERING (STUDENT) ---
-        
-        function renderStudentForm() {
-            contentArea.innerHTML = `
-                <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg transition-all duration-300">
-                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit Your Anonymous Idea or Comment</h2>
-                    <p class="text-gray-600 mb-6">Your identity is kept completely private. This is a secure channel for feedback.</p>
-                    
-                    <form id="submission-form">
-                        <textarea id="suggestion-input" rows="6" 
-                                  class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
-                                  placeholder="Type your suggestion, idea, or comment here..."></textarea>
-                        
-                        <div id="message-box" class="mt-4 p-3 rounded-lg hidden"></div>
-                        
-                        <div class="flex mt-6">
-                            <button type="submit" 
-                                    class="w-full px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-md">
-                                Submit Anonymously
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            
-            document.getElementById('submission-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                const content = document.getElementById('suggestion-input').value;
-                submitIdea(content);
-            });
-        }
 
         // --- UI RENDERING (ADMIN) ---
 
         function renderAdminView() {
             if (isCommentsUnlocked) {
-                contentArea.innerHTML = `
+                adminViewContainer.innerHTML = `
                     <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg">
                         <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">All Submitted Ideas</h2>
                         <div class="flex items-center justify-between mb-4">
@@ -352,7 +325,7 @@
                 `;
                 document.getElementById('toggle-ids-btn')?.addEventListener('click', toggleSubmitterIds);
             } else {
-                 contentArea.innerHTML = `
+                 adminViewContainer.innerHTML = `
                     <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg">
                         <h2 class="text-2xl font-semibold text-gray-800 mb-4">Admin Access Required</h2>
                         <p class="text-gray-600 mb-6">Enter the administrator password to view anonymous submissions.</p>
@@ -467,9 +440,16 @@
             }, 5000);
         }
 
-        // --- AUTHENTICATION SETUP ---
+        // --- APPLICATION STARTUP ---
         
-        // Listen for Auth State Changes
+        // 1. Attach submission form listener immediately
+        document.getElementById('submission-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const content = document.getElementById('suggestion-input').value;
+            submitIdea(content);
+        });
+
+        // 2. Listen for Auth State Changes to finalize user role
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUserId = user.uid;
@@ -477,32 +457,24 @@
                 let baseIsAdmin = !user.isAnonymous;
                 let demoMode = localStorage.getItem(DEMO_MODE_KEY);
 
-                // Default Logic Change: If the user has an admin token but hasn't explicitly chosen a role 
-                // (i.e., demoMode is null), we default the view to 'student' and save that state.
+                // If admin token exists but no role preference, default to student view
                 if (baseIsAdmin && demoMode === null) {
                     localStorage.setItem(DEMO_MODE_KEY, 'student');
                     demoMode = 'student';
                 }
 
-                if (demoMode === 'student') {
-                    isAdmin = false;
-                } else {
-                    isAdmin = baseIsAdmin;
-                }
+                isAdmin = (demoMode !== 'student' && baseIsAdmin);
                 
                 updateRoleDisplay(currentUserId, isAdmin);
                 
                 isAuthReady = true;
-                // CALL initializeAppFeatures ONLY here, once Auth state is known.
+                // Finalize setup (render Admin view if needed, or just confirms Student view)
                 initializeAppFeatures();
             } else {
-                // No user found (first time or session expired), attempt sign in
+                // No user found, start the sign-in process
                 handleAuth();
             }
         });
-
-        // The previous call to initializeAppFeatures() has been removed. 
-        // Rendering is now solely dependent on the onAuthStateChanged callback.
 
     </script>
 </body>
