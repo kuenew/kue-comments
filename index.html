@@ -7,7 +7,7 @@
     <!-- Load Tailwind CSS (Maintains 1-file constraint) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght=400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght%40400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
@@ -183,9 +183,22 @@
             loginMessageBox.classList.add('hidden'); 
 
             if (password === ADMIN_PASSWORD) {
-                isCommentsUnlocked = true;
-                // Re-run features to swap to the unlocked admin view and start listeners
-                initializeAppFeatures(); 
+                // IMMEDIATE FEEDBACK: Show success message instantly
+                loginMessageBox.textContent = "Success! Loading real-time data...";
+                loginMessageBox.classList.remove('hidden');
+                loginMessageBox.classList.remove('bg-red-100', 'text-red-700');
+                loginMessageBox.classList.add('bg-green-100', 'text-green-700');
+                
+                // Clear the password input immediately
+                document.getElementById('admin-password-input').value = '';
+                
+                // Add a small 50ms delay to let the user visually register the success message 
+                // before the UI view switches to the 'Loading submissions...' state.
+                setTimeout(() => {
+                    // Unlock and initialize features (this will instantly swap the view)
+                    isCommentsUnlocked = true;
+                    initializeAppFeatures(); 
+                }, 50); 
             } else {
                 loginMessageBox.textContent = "Incorrect Password. Access Denied.";
                 loginMessageBox.classList.remove('hidden');
