@@ -28,7 +28,14 @@
 
         <!-- Main Content Area: Content will be injected here immediately by JS -->
         <div id="content-area">
-            <!-- Loading state is now handled by initial render of the student form -->
+            <!-- Initial content before auth is ready -->
+            <div class="text-center py-10 text-gray-500">
+                <svg class="animate-spin h-6 w-6 mx-auto mb-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Establishing secure connection...
+            </div>
         </div>
     </div>
 
@@ -65,6 +72,9 @@
         
         // LocalStorage key for forcing student view in demo
         const DEMO_MODE_KEY = 'feedbackAppDemoMode';
+
+        // Variable to hold the Firestore unsubscribe function for cleanup
+        let unsubscribeSubmissions = null; 
 
         const roleDisplay = document.getElementById('role-display');
         const contentArea = document.getElementById('content-area');
@@ -134,9 +144,23 @@
 
         /**
          * Renders the application features based on role and auth status.
+         * Crucially, this function now cleans up old listeners.
          */
         function initializeAppFeatures() {
+            // Check if we are ready before doing anything that requires the user state
+            if (!isAuthReady) {
+                console.log("initializeAppFeatures called before AuthReady. Skipping rendering.");
+                return;
+            }
+            
             contentArea.innerHTML = ''; // Clear existing content
+            
+            // 1. Cleanup existing listener before rendering the new view
+            if (unsubscribeSubmissions) {
+                unsubscribeSubmissions();
+                unsubscribeSubmissions = null; // Reset it
+                console.log("Firestore listener unsubscribed.");
+            }
 
             if (isAdmin) {
                 renderAdminView();
@@ -145,7 +169,7 @@
             }
 
             // Only start data listeners if we are fully authenticated, authorized, AND unlocked (admin view)
-            if (isAuthReady && isAdmin && isCommentsUnlocked) {
+            if (isAdmin && isCommentsUnlocked) {
                  setupRealtimeListener();
             }
         }
@@ -181,7 +205,8 @@
             
             const suggestionsQuery = query(getCollectionRef());
             
-            onSnapshot(suggestionsQuery, (snapshot) => {
+            // 2. Attach new listener and store the unsubscriber function
+            unsubscribeSubmissions = onSnapshot(suggestionsQuery, (snapshot) => {
                 const submissions = [];
                 snapshot.forEach(doc => {
                     submissions.push({ id: doc.id, ...doc.data() });
@@ -196,6 +221,7 @@
                     submissionsList.innerHTML = `<p class="text-red-500 p-4">Error fetching data: ${error.message}</p>`;
                 }
             });
+             console.log("New Firestore listener attached.");
         }
 
         /**
@@ -467,7 +493,7 @@
                 updateRoleDisplay(currentUserId, isAdmin);
                 
                 isAuthReady = true;
-                // Re-run the feature initialization now that auth is complete
+                // CALL initializeAppFeatures ONLY here, once Auth state is known.
                 initializeAppFeatures();
             } else {
                 // No user found (first time or session expired), attempt sign in
@@ -475,9 +501,8 @@
             }
         });
 
-        // Start the application immediately after functions are defined.
-        // This renders the default view (Student Form) while waiting for external scripts and auth.
-        initializeAppFeatures();
+        // The previous call to initializeAppFeatures() has been removed. 
+        // Rendering is now solely dependent on the onAuthStateChanged callback.
 
     </script>
 </body>
